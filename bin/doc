@@ -3,6 +3,8 @@
 const fs = require("fs");
 const prettier = require("prettier");
 
+const { spawnSync } = require("child_process");
+
 const code = fs.existsSync(process.argv[2])
   ? fs.readFileSync(process.argv[2], "utf-8")
   : process.argv.slice(2).join(" ").replace(/\\n/g, "\n");
@@ -11,4 +13,12 @@ const doc = prettier.__debug.printToDoc(code, {
   parser: "ruby",
   plugins: ["."]
 });
+
+fs.writeFile("output.json", new Uint8Array(Buffer.from(JSON.stringify(doc))), () => {});
+
 console.log(prettier.__debug.formatDoc(doc));
+
+const { stdout } = spawnSync("ruby", ["doc.rb"], { input: JSON.stringify(doc) });
+
+console.log(stdout.toString());
+console.log(prettier.__debug.printDocToString(doc, { parser: "ruby", plugins: ["."] }).formatted);

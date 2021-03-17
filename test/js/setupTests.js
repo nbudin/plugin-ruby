@@ -1,6 +1,8 @@
 const net = require("net");
 const prettier = require("prettier");
 
+const { spawnSync } = require("child_process");
+
 // eslint-disable-next-line no-underscore-dangle
 const { formatAST } = prettier.__debug;
 
@@ -42,31 +44,38 @@ function checkFormat(before, after, config) {
 
   const opts = Object.assign({ parser, plugins: ["."], originalText }, config);
 
-  return new Promise((resolve, reject) => {
-    if (
-      opts.parser === "ruby" &&
-      (originalText.includes("#") || originalText.includes("=begin"))
-    ) {
-      // If the source includes an #, then this test has a comment in it.
-      // Unfortunately, formatAST expects comments to already be attached, but
-      // prettier doesn't export anything that allows you to hook into their
-      // attachComments function. So in this case, we need to instead go through
-      // the normal format function and spawn a process.
-      resolve(prettier.format(originalText, opts));
-    } else {
-      parseAsync(opts.parser, originalText)
-        .then((ast) => resolve(formatAST(ast, opts).formatted))
-        .catch(reject);
-    }
-  })
-    .then((formatted) => ({
-      pass: formatted === `${after}\n`,
-      message: () => `Expected:\n${after}\nReceived:\n${formatted}`
-    }))
-    .catch((error) => ({
-      pass: false,
-      message: () => error.message
-    }));
+  if (
+    opts.parser === "ruby" // &&
+    // (originalText.includes("#") || originalText.includes("=begin"))
+  ) {
+    // If the source includes an #, then this test has a comment in it.
+    // Unfortunately, formatAST expects comments to already be attached, but
+    // prettier doesn't export anything that allows you to hook into their
+    // attachComments function. So in this case, we need to instead go through
+    // the normal format function and spawn a process.
+
+    const doc = prettier.__debug.printToDoc(originalText, opts);
+    const { stdout } = spawnSync("ruby", ["doc.rb"], { input: JSON.stringify(doc) });
+
+    const expected = prettier.__debug.printDocToString(doc, { parser: "ruby", plugins: ["."] }).formatted;
+    const actual = stdout.toString();
+
+    return Promise.resolve({
+      pass: expected === actual,
+      message: () => `Expected:\n${expected}\nReceived:\n${actual}`
+    });
+  } else {
+    return parseAsync(opts.parser, originalText)
+      .then((ast) => formatAST(ast, opts).formatted)
+      .then((formatted) => ({
+        pass: formatted === `${after}\n`,
+        message: () => `Expected:\n${after}\nReceived:\n${formatted}`
+      }))
+      .catch((error) => ({
+        pass: false,
+        message: () => error.message
+      }));
+  }
 }
 
 expect.extend({
