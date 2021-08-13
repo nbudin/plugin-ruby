@@ -36,6 +36,12 @@ function replaceNewlines(doc) {
   );
 }
 
+function removeBreakParent(doc) {
+  return mapDoc(doc, (currentDoc) =>
+    currentDoc.type === "break-parent" ? [] : currentDoc
+  );
+}
+
 // Returns a number that represents the minimum amount of leading whitespace
 // that is present on every line in the given string. So for example if you have
 // the following heredoc:
@@ -54,6 +60,7 @@ function getCommonLeadingWhitespace(content) {
   return content
     .split("\n")
     .slice(0, -1)
+    .filter((line) => line.trim().length > 0)
     .reduce((minimum, line) => {
       const matched = pattern.exec(line);
       const length = matched ? matched[0].length : 0;
@@ -107,24 +114,26 @@ function embed(path, print, textToDoc, _opts) {
   // Pass that content into the embedded parser. Get back the doc node.
   const formatted = concat([
     literallineWithoutBreakParent,
-    replaceNewlines(stripTrailingHardline(textToDoc(content, { parser })))
+    removeBreakParent(
+      replaceNewlines(stripTrailingHardline(textToDoc(content, { parser })))
+    )
   ]);
 
   // If we're using a squiggly heredoc, then we can properly handle indentation
   // ourselves.
   if (isSquiggly) {
-    return concat([
-      path.call(print, "beging"),
-      lineSuffix(
-        group(
+    return group(
+      concat([
+        path.call(print, "beging"),
+        lineSuffix(
           concat([
-            indent(markAsRoot(formatted)),
-            literallineWithoutBreakParent,
+            group(indent(markAsRoot(formatted))),
+            { type: "line", hard: true },
             ending.trim()
           ])
         )
-      )
-    ]);
+      ])
+    );
   }
 
   // Otherwise, we need to just assume it's formatted correctly and return the
